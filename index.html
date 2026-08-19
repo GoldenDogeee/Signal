@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL — Radar Reflex</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --void:#03110B;
+  --void-2:#071C12;
+  --grid:#124326;
+  --phosphor:#3CFF8C;
+  --phosphor-dim:#1F8F55;
+  --amber:#FFB020;
+  --alert:#FF4433;
+  --text-dim:#7FCBA0;
+
+  --display:'Black Ops One', sans-serif;
+  --mono:'Share Tech Mono', monospace;
+}
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:
+    radial-gradient(ellipse at center, var(--void-2) 0%, var(--void) 75%);
+  color:var(--text-dim);
+  font-family:var(--mono);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:1.25rem;
+  overflow:hidden;
+}
+
+/* CRT scanline + vignette overlay */
+.crt::before{
+  content:"";
+  position:fixed; inset:0;
+  pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px,
+    rgba(0,0,0,0.18) 3px, rgba(0,0,0,0) 4px
+  );
+  z-index:50;
+  mix-blend-mode:multiply;
+}
+.crt::after{
+  content:"";
+  position:fixed; inset:0;
+  pointer-events:none;
+  box-shadow: inset 0 0 160px rgba(0,0,0,0.85);
+  z-index:51;
+}
+
+.console{
+  width:min(94vw, 560px);
+  position:relative;
+}
+
+/* ---------------- HUD ---------------- */
+.hud{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  border-bottom:1px solid var(--grid);
+  padding-bottom:0.6rem;
+  margin-bottom:0.9rem;
+}
+.hud-block{ line-height:1.3; }
+.hud-label{
+  font-size:0.62rem;
+  letter-spacing:0.14em;
+  color:var(--phosphor-dim);
+  text-transform:uppercase;
+}
+.hud-value{
+  font-size:1.5rem;
+  color:var(--phosphor);
+  text-shadow:0 0 10px rgba(60,255,140,0.55);
+}
+.hud-value.streak{ color:var(--amber); text-shadow:0 0 10px rgba(255,176,32,0.55); }
+.hud-right{ text-align:right; }
+.timebar-wrap{
+  width:140px;
+  height:6px;
+  background:var(--void-2);
+  border:1px solid var(--grid);
+  margin-top:4px;
+}
+.timebar{
+  height:100%;
+  width:100%;
+  background:var(--phosphor);
+  box-shadow:0 0 8px rgba(60,255,140,0.7);
+  transition:width 0.1s linear, background 0.3s ease;
+}
+
+/* ---------------- radar ---------------- */
+.radar-wrap{
+  position:relative;
+  width:100%;
+  aspect-ratio:1;
+  margin:0 auto;
+  border-radius:50%;
+  box-shadow:
+    0 0 0 1px var(--grid),
+    0 0 40px rgba(60,255,140,0.08),
+    inset 0 0 60px rgba(0,0,0,0.6);
+}
+canvas{
+  display:block;
+  width:100%;
+  height:100%;
+  border-radius:50%;
+  cursor:crosshair;
+}
+
+.hint{
+  text-align:center;
+  font-size:0.68rem;
+  letter-spacing:0.08em;
+  color:var(--phosphor-dim);
+  margin-top:0.9rem;
+  text-transform:uppercase;
+}
+
+/* ---------------- overlays ---------------- */
+.overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(3,17,11,0.94);
+  border:1px solid var(--grid);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:2rem 1.5rem;
+  z-index:5;
+}
+.overlay.hidden{ display:none; }
+
+.game-title{
+  font-family:var(--display);
+  font-size:clamp(1.6rem, 7vw, 2.4rem);
+  color:var(--phosphor);
+  text-shadow:0 0 18px rgba(60,255,140,0.6);
+  letter-spacing:0.03em;
+  margin:0 0 0.5rem;
+}
+.game-tag{
+  font-size:0.72rem;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  margin:0 0 1.75rem;
+}
+.brief{
+  max-width:34ch;
+  font-size:0.82rem;
+  line-height:1.7;
+  color:var(--text-dim);
+  margin:0 0 1.75rem;
+}
+.brief b{ color:var(--phosphor); }
+.brief .noise-word{ color:var(--alert); }
+.brief .priority-word{ color:var(--amber); }
+
+.btn{
+  font-family:var(--mono);
+  font-size:0.85rem;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  background:transparent;
+  color:var(--phosphor);
+  border:1px solid var(--phosphor-dim);
+  padding:0.85rem 2rem;
+  cursor:pointer;
+  transition:all 0.15s ease;
+}
+.btn:hover{
+  border-color:var(--phosphor);
+  box-shadow:0 0 16px rgba(60,255,140,0.45);
+  background:rgba(60,255,140,0.06);
+}
+.btn:active{ transform:translateY(1px); }
+
+.best{
+  margin-top:1.5rem;
+  font-size:0.7rem;
+  color:var(--phosphor-dim);
+  letter-spacing:0.08em;
+}
+.best span{ color:var(--amber); }
+
+.stats{
+  list-style:none;
+  padding:0; margin:0 0 1.75rem;
+  font-size:0.78rem;
+  width:100%;
+  max-width:260px;
+}
+.stats li{
+  display:flex;
+  justify-content:space-between;
+  padding:0.4rem 0;
+  border-bottom:1px dashed var(--grid);
+  color:var(--text-dim);
+}
+.stats li span{ color:var(--phosphor); }
+.newbest{
+  color:var(--amber);
+  font-size:0.72rem;
+  letter-spacing:0.08em;
+  margin:-1rem 0 1.25rem;
+  text-transform:uppercase;
+}
+</style>
+</head>
+<body class="crt">
+
+<div class="console">
+
+  <div class="hud">
+    <div class="hud-block">
+      <div class="hud-label">Contacts Neutralized</div>
+      <div class="hud-value" id="scoreVal">0</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Streak</div>
+      <div class="hud-value streak" id="streakVal">×1</div>
+    </div>
+    <div class="hud-block hud-right">
+      <div class="hud-label">Time Remaining</div>
+      <div class="timebar-wrap"><div class="timebar" id="timeBar"></div></div>
+    </div>
+  </div>
+
+  <div class="radar-wrap">
+    <canvas id="radar" width="500" height="500"></canvas>
+
+    <!-- START OVERLAY -->
+    <div class="overlay" id="startOverlay">
+      <h1 class="game-title">SIGNAL</h1>
+      <p class="game-tag">Radar Reflex Trainer</p>
+      <p class="brief">
+        Contacts appear on scope and fade fast — <b>click green returns</b>
+        before they're lost. Watch for <span class="noise-word">red static</span>,
+        engaging it breaks your streak. Rare <span class="priority-word">amber
+        contacts</span> are high-value — don't miss them. 45 seconds on the scope.
+      </p>
+      <button class="btn" id="startBtn">Begin Scan</button>
+      <p class="best">Best Score: <span id="bestStart">0</span></p>
+    </div>
+
+    <!-- END OVERLAY -->
+    <div class="overlay hidden" id="endOverlay">
+      <h1 class="game-title" style="font-size:1.6rem;">Scan Complete</h1>
+      <p class="newbest hidden" id="newBestTag">★ New Best Score ★</p>
+      <ul class="stats">
+        <li>Final Score <span id="finalScore">0</span></li>
+        <li>Contacts Neutralized <span id="finalHits">0</span></li>
+        <li>False Engagements <span id="finalMisfires">0</span></li>
+        <li>Longest Streak <span id="finalStreak">×1</span></li>
+        <li>Accuracy <span id="finalAccuracy">0%</span></li>
+      </ul>
+      <button class="btn" id="againBtn">Run Again</button>
+      <p class="best">Best Score: <span id="bestEnd">0</span></p>
+    </div>
+  </div>
+
+  <p class="hint">Click contacts before they fade &middot; avoid red static</p>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const DURATION = 45;          // seconds
+const SIZE = 500;             // internal canvas coordinate space
+const CX = SIZE/2, CY = SIZE/2;
+const MAX_R = SIZE/2 - 22;
+const SWEEP_SPEED = 1.35;     // radians/sec
+const TRAIL_ARC = 0.9;        // radians of afterglow behind sweep
+
+const TYPE_WEIGHTS = [ ['contact',0.68], ['noise',0.22], ['priority',0.10] ];
+
+/* ================= STORAGE (safe fallback) ================= */
+let memoryBest = 0;
+function getBest(){
+  try { return parseInt(localStorage.getItem('signalHighScore') || '0', 10); }
+  catch(e){ return memoryBest; }
+}
+function setBest(v){
+  try { localStorage.setItem('signalHighScore', String(v)); }
+  catch(e){ memoryBest = v; }
+}
+
+/* ================= AUDIO ================= */
+let actx = null;
+function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); return actx; }
+function beep(freq, dur, type='sine', gain=0.12, delay=0){
+  const c = ac();
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.value = gain;
+  osc.connect(g); g.connect(c.destination);
+  const t0 = c.currentTime + delay;
+  g.gain.setValueAtTime(gain, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+function sfxHit(mult){ beep(520 + mult*40, 0.09, 'square', 0.09); }
+function sfxPriority(){ beep(700,0.07,'triangle',0.12); beep(950,0.09,'triangle',0.1,0.06); }
+function sfxAlert(){ beep(140,0.22,'sawtooth',0.14); }
+function sfxLost(){ beep(220,0.15,'sine',0.05); }
+function sfxTick(){ beep(880,0.03,'sine',0.03); }
+function sfxStart(){ [440,660,880].forEach((f,i)=>beep(f,0.12,'square',0.08,i*0.09)); }
+function sfxEnd(){ [660,520,392].forEach((f,i)=>beep(f,0.18,'triangle',0.1,i*0.12)); }
+
+/* ================= STATE ================= */
+const canvas = document.getElementById('radar');
+const ctx = canvas.getContext('2d');
+const dpr = Math.min(window.devicePixelRatio||1, 2);
+canvas.width = SIZE*dpr; canvas.height = SIZE*dpr;
+ctx.scale(dpr,dpr);
+
+let running = false;
+let elapsed = 0;
+let sweepAngle = 0;
+let lastTime = 0;
+let spawnTimer = 0;
+let blips = [];
+let particles = [];
+let floaters = [];
+let shakeT = 0;
+
+let score = 0, combo = 0, multiplier = 1, longestStreak = 1;
+let hits = 0, misfires = 0, spawnedContacts = 0;
+
+/* ================= HELPERS ================= */
+const lerp = (a,b,t)=> a+(b-a)*Math.min(1,Math.max(0,t));
+const rand = (a,b)=> a + Math.random()*(b-a);
+
+function pickType(){
+  const r = Math.random();
+  let acc = 0;
+  for (const [t,w] of TYPE_WEIGHTS){ acc += w; if (r <= acc) return t; }
+  return 'contact';
+}
+
+function spawnBlip(){
+  const type = pickType();
+  const angle = rand(0, Math.PI*2);
+  const radius = rand(MAX_R*0.22, MAX_R*0.92);
+  const t = elapsed/DURATION;
+  const lifetime = type==='priority' ? lerp(2200,1400,t) : lerp(1500,750,t);
+  blips.push({
+    type, angle, radius,
+    x: CX+Math.cos(angle)*radius, y: CY+Math.sin(angle)*radius,
+    spawnTime: elapsed, lifetime,
+    size: type==='priority'? 13 : (type==='noise'? 9 : 10),
+    hit:false
+  });
+  if (type==='contact' || type==='priority') spawnedContacts++;
+}
+
+function burst(x,y,color,n=14){
+  for(let i=0;i<n;i++){
+    const a = rand(0,Math.PI*2);
+    const spd = rand(40,160);
+    particles.push({
+      x,y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      life:0, maxLife:rand(0.35,0.6), color
+    });
+  }
+}
+function floatText(x,y,text,color){
+  floaters.push({ x,y, text, color, life:0, maxLife:0.9 });
+}
+
+/* ================= GAME FLOW ================= */
+function resetState(){
+  elapsed=0; sweepAngle=0; spawnTimer=0; blips=[]; particles=[]; floaters=[]; shakeT=0;
+  score=0; combo=0; multiplier=1; longestStreak=1; hits=0; misfires=0; spawnedContacts=0;
+  updateHUD();
+}
+
+function startGame(){
+  ac(); sfxStart();
+  resetState();
+  running = true;
+  document.getElementById('startOverlay').classList.add('hidden');
+  document.getElementById('endOverlay').classList.add('hidden');
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function endGame(){
+  running = false;
+  sfxEnd();
+  const best = getBest();
+  const isNew = score > best;
+  if (isNew) setBest(score);
+
+  document.getElementById('finalScore').textContent = score;
+  document.getElementById('finalHits').textContent = hits;
+  document.getElementById('finalMisfires').textContent = misfires;
+  document.getElementById('finalStreak').textContent = '×' + longestStreak;
+  const acc = spawnedContacts>0 ? Math.round((hits/spawnedContacts)*100) : 0;
+  document.getElementById('finalAccuracy').textContent = acc + '%';
+  document.getElementById('bestEnd').textContent = isNew ? score : best;
+  document.getElementById('newBestTag').classList.toggle('hidden', !isNew);
+  document.getElementById('endOverlay').classList.remove('hidden');
+}
+
+function updateHUD(){
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('streakVal').textContent = '×' + multiplier;
+  const pct = Math.max(0, 100 * (1 - elapsed/DURATION));
+  const bar = document.getElementById('timeBar');
+  bar.style.width = pct + '%';
+  bar.style.background = pct < 20 ? 'var(--alert)' : (pct < 45 ? 'var(--amber)' : 'var(--phosphor)');
+}
+
+/* ================= INPUT ================= */
+canvas.addEventListener('click', (e)=>{
+  if (!running) return;
+  const rect = canvas.getBoundingClientRect();
+  const scale = SIZE/rect.width;
+  const mx = (e.clientX-rect.left)*scale;
+  const my = (e.clientY-rect.top)*scale;
+
+  let best = null, bestDist = Infinity;
+  for (const b of blips){
+    if (b.hit) continue;
+    const d = Math.hypot(mx-b.x, my-b.y);
+    const age = elapsed - b.spawnTime;
+    const decay = age/b.lifetime;
+    const hitR = Math.max(b.size, 24 - decay*6); // slightly forgiving hit box
+    if (d <= hitR && d < bestDist){ best = b; bestDist = d; }
+  }
+  if (!best) return;
+  best.hit = true;
+
+  if (best.type === 'noise'){
+    misfires++;
+    combo = 0; multiplier = 1;
+    score = Math.max(0, score - 40);
+    shakeT = 0.25;
+    burst(best.x,best.y,'#FF4433',16);
+    floatText(best.x,best.y-10,'-40','#FF4433');
+    sfxAlert();
+  } else {
+    hits++;
+    combo++;
+    multiplier = Math.min(5, 1 + Math.floor(combo/3));
+    longestStreak = Math.max(longestStreak, multiplier);
+    const base = best.type==='priority' ? 250 : 100;
+    const gained = base * multiplier;
+    score += gained;
+    const color = best.type==='priority' ? '#FFB020' : '#3CFF8C';
+    burst(best.x,best.y,color, best.type==='priority'?22:14);
+    floatText(best.x,best.y-10, '+'+gained, color);
+    best.type==='priority' ? sfxPriority() : sfxHit(multiplier);
+  }
+  updateHUD();
+});
+
+/* ================= LOOP ================= */
+function loop(now){
+  if (!running) return;
+  const dt = Math.min(0.05, (now-lastTime)/1000);
+  lastTime = now;
+  elapsed += dt;
+  sweepAngle += SWEEP_SPEED*dt;
+  if (shakeT>0) shakeT = Math.max(0, shakeT-dt);
+
+  if (elapsed >= DURATION){
+    render(dt);
+    endGame();
+    return;
+  }
+
+  /* spawning */
+  spawnTimer -= dt;
+  if (spawnTimer <= 0){
+    const t = elapsed/DURATION;
+    const maxConcurrent = 1 + Math.floor(t*2.4);
+    const activeCount = blips.filter(b=>!b.hit && (elapsed-b.spawnTime)<b.lifetime).length;
+    if (activeCount < maxConcurrent) spawnBlip();
+    spawnTimer = rand(lerp(760,340,t), lerp(950,460,t));
+  }
+
+  /* expire blips */
+  blips = blips.filter(b=>{
+    if (b.hit) return false;
+    const age = elapsed - b.spawnTime;
+    if (age >= b.lifetime){
+      if (b.type==='contact' || b.type==='priority'){
+        combo = 0; multiplier = 1;
+        sfxLost();
+      }
+      return false;
+    }
+    return true;
+  });
+
+  /* sweep tick sound once per rotation */
+  if (sweepAngle >= Math.PI*2){ sweepAngle -= Math.PI*2; sfxTick(); }
+
+  /* particles */
+  particles.forEach(p=>{ p.life+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.92; p.vy*=0.92; });
+  particles = particles.filter(p=>p.life < p.maxLife);
+
+  floaters.forEach(f=>{ f.life+=dt; f.y -= 26*dt; });
+  floaters = floaters.filter(f=>f.life < f.maxLife);
+
+  updateHUD();
+  render(dt);
+  requestAnimationFrame(loop);
+}
+
+/* ================= RENDER ================= */
+function render(){
+  ctx.clearRect(0,0,SIZE,SIZE);
+  ctx.save();
+  if (shakeT>0){
+    ctx.translate(rand(-4,4)*shakeT*4, rand(-4,4)*shakeT*4);
+  }
+
+  // grid rings
+  ctx.strokeStyle = 'rgba(18,67,38,0.9)';
+  ctx.lineWidth = 1;
+  [0.25,0.5,0.75,1.0].forEach(f=>{
+    ctx.beginPath();
+    ctx.arc(CX,CY, MAX_R*f, 0, Math.PI*2);
+    ctx.stroke();
+  });
+  // radial lines
+  for(let a=0;a<Math.PI*2;a+=Math.PI/6){
+    ctx.beginPath();
+    ctx.moveTo(CX,CY);
+    ctx.lineTo(CX+Math.cos(a)*MAX_R, CY+Math.sin(a)*MAX_R);
+    ctx.stroke();
+  }
+
+  // sweep trail
+  const grad = ctx.createConicGradient ? null : null;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(CX,CY);
+  ctx.arc(CX,CY,MAX_R, sweepAngle - TRAIL_ARC, sweepAngle);
+  ctx.closePath();
+  const g = ctx.createRadialGradient(CX,CY,0,CX,CY,MAX_R);
+  g.addColorStop(0, 'rgba(60,255,140,0.22)');
+  g.addColorStop(1, 'rgba(60,255,140,0)');
+  ctx.fillStyle = g;
+  ctx.globalAlpha = 1;
+  ctx.fill();
+  ctx.restore();
+
+  // sweep line
+  ctx.strokeStyle = 'rgba(60,255,140,0.95)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#3CFF8C';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(CX,CY);
+  ctx.lineTo(CX+Math.cos(sweepAngle)*MAX_R, CY+Math.sin(sweepAngle)*MAX_R);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // blips
+  blips.forEach(b=>{
+    const age = elapsed - b.spawnTime;
+    const decay = 1 - age/b.lifetime;
+    const pulse = 1 + Math.sin(elapsed*10)*0.08;
+    let color = '#3CFF8C';
+    if (b.type==='noise') color = '#FF4433';
+    if (b.type==='priority') color = '#FFB020';
+
+    ctx.globalAlpha = Math.max(0.15, decay);
+    ctx.beginPath();
+    ctx.arc(b.x,b.y, b.size*pulse, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // decay ring
+    ctx.globalAlpha = Math.max(0.1, decay*0.6);
+    ctx.beginPath();
+    ctx.arc(b.x,b.y, b.size + 6 + (1-decay)*14, 0, Math.PI*2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // particles
+  particles.forEach(p=>{
+    const a = 1 - p.life/p.maxLife;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y, 2.5, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // floating text
+  ctx.font = '12px "Share Tech Mono", monospace';
+  ctx.textAlign = 'center';
+  floaters.forEach(f=>{
+    const a = 1 - f.life/f.maxLife;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+}
+
+/* initial idle render */
+render();
+document.getElementById('bestStart').textContent = getBest();
+
+/* ================= EVENTS ================= */
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+</script>
+</body>
+</html>
